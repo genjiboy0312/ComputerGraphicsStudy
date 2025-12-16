@@ -1,6 +1,9 @@
 #include <GL/glew.h> //glfw보다 먼저 include해야 함
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
 // 이번에는 Vertex Array와 Shader를 이용하여 삼각형을 그리는 Modern OpenGL 방식으로 구현할 것임
 // Vertex Array는 GPU의 VRAM에 Buffer에 저장되는 데이터를 넘기는 방식을 이야기함
 // 데이터를 넘기고 나서 삼각형을 실제로 그리는 명령을 호출하는 것을 Draw call이라고 함
@@ -21,15 +24,19 @@
 // Draw(); //현재 처리중인 데이터(=삼각형 1)를 화면에 그림
 // Activate(t2); //삼각형 2를 처리중인 상태로 설정
 // Draw(); //현재 처리중인 데이터(=삼각형 2)를 화면에 그림
+
+struct ShaderProgramSource
+{
+	std::string VertexSource;
+	std::string FragSource;
+};
+
 //--------Shader 컴파일 함수----------//
 static unsigned int CompileShader(unsigned int type, const std::string& source)
 {
 	unsigned int id = glCreateShader(type); //셰이더 객체 생성(마찬가지)
 	const char* src = source.c_str();
-	glShaderSource(id, // 셰이더의 소스 코드 명시, 소스 코드를 명시할 셰이더 객체 id
-		1, // 몇 개의 소스 코드를 명시할 것인지
-		&src, // 실제 소스 코드가 들어있는 문자열의 주소값
-		nullptr); // 해당 문자열 전체를 사용할 경우 nullptr입력, 아니라면 길이 명시
+	glShaderSource(id, 1, &src, nullptr); // 셰이더의 소스 코드 명시
 	glCompileShader(id); // id에 해당하는 셰이더 컴파일
 
 	// Error Handling(없으면 셰이더 프로그래밍할때 괴롭다...)
@@ -69,6 +76,38 @@ static unsigned int CreateShader(const std::string& vertexShader, const std::str
 
 	return program;
 }
+
+static ShaderProgramSource ParseShader(const std::string& filepath)
+{
+	std::ifstream stream(filepath);
+	enum class ShaderType
+	{
+		NONE = -1, VERTEX = 0, FRAGMENT = 1
+	};
+
+	std::string line;
+	std::stringstream ss[2];
+	ShaderType type = ShaderType::NONE;
+	while (getline(stream, line))
+	{
+		if (line.find("#shader") != std::string::npos)
+		{
+			if (line.find("vertex") != std::string::npos) //vertex 셰이더 섹션
+			{
+				type = ShaderType::VERTEX;
+			}
+			else if (line.find("fragment") != std::string::npos) //fragment 셰이더 섹션
+			{
+				type = ShaderType::FRAGMENT;
+			}
+		}
+		else
+		{
+			ss[(int)type] << line << '\n'; //코드를 stringstream에 삽입
+		}
+	}
+	return { ss[0].str(), ss[1].str() };
+}
 int main(void)
 {
 	GLFWwindow* window;
@@ -98,21 +137,29 @@ int main(void)
 	//-----Modern OpenGL 방식--------//
 	// http://docs.gl/ 에서 아래 gl함수들의 reference를 찾을 수 있음
 
-	float positions[9] = { //삼각형 좌표 정보. 현재는 CPU side memory에 있음
-		-0.5f, -0.5f, 0.0f,
-		 0.0f,  0.5f,0.0f,
-		 0.5f, -0.5f,0.0f,
+	float positions[] = { //삼각형 좌표 정보. 현재는 CPU side memory에 있음
+		-0.5f, -0.5f, 0.0f,		//	0
+		 0.5f,  -0.5f,0.0f,		//	1
+		 0.5f, 0.5f,0.0f,		//	2
+		 -0.5f, 0.5f,0.0f,		//	3
 	};
+
+	unsigned int indices[] = {
+		0, 1, 2,		//	t1
+		2, 3, 0			//	t2
+	};
+
+	unsigned int ibo;		//	Index Buffer Object
+	glGenBuffers(1, &ibo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);		//	바인딩
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof(unsigned int), indices, GL_STATIC_DRAW);
 
 	//---------데이터를 전달하는 과정--------//
 	unsigned int bufferID;
 	glGenBuffers(1, &bufferID); //1. 데이터를 저장할 버퍼 객체를 만들고(1개), 그 버퍼 객체의 주소를 bufferID에 저장
 	glBindBuffer(GL_ARRAY_BUFFER, bufferID); //2. 방금 만든 buffer(두 번째 인자로 주소를 넘겨준)를 "작업 상태"로 만듬
 	// 첫 번째 GL_ARRAY_BUFFER는 버퍼에 배열 데이터가 저장될 것이라는 의미
-	glBufferData(GL_ARRAY_BUFFER, //3. 이제 실제로 GPU에 데이터를 넘겨주는 함수를 호출 
-		9 * sizeof(float), //데이터의 크기를 전달
-		positions,		  //데이터 포인터 전달
-		GL_STATIC_DRAW);   //데이터 변경이 적을 것이라는 것을 알려줌(GPU의 효율적인 동작을 위한 Hint일 뿐)
+	glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(float), positions, GL_STATIC_DRAW);   //3. 이제 실제로 GPU에 데이터를 넘겨주는 함수를 호출 
 
 	//	데이터를 해석하는 방법
 	glEnableVertexAttribArray(0);
@@ -122,27 +169,29 @@ int main(void)
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
 	//---------Shader 생성---------------//
-	std::string vertexShader =
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) in vec4 position;" //여기 있는 location = 0가, 118, 119 line의 0을 의미함
-		"\n"
-		"void main()\n"
-		"{\n"
-		"	gl_Position = position;\n" //119에서 보다시피, 2개의 값만 전달했지만, 알아서 vec4로 변환해줌
-		"}\n";
+	//std::string vertexShader =
+	//	"#version 330 core\n"
+	//	"\n"
+	//	"layout(location = 0) in vec4 position;" //여기 있는 location = 0가, 118, 119 line의 0을 의미함
+	//	"\n"
+	//	"void main()\n"
+	//	"{\n"
+	//	"	gl_Position = position;\n" //119에서 보다시피, 2개의 값만 전달했지만, 알아서 vec4로 변환해줌
+	//	"}\n";
 
-	std::string fragShader =
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) out vec4 color;" //출력 color
-		"\n"
-		"void main()\n"
-		"{\n"
-		"	color = vec4(1.0, 0.0 ,0.0, 1.0);\n" //빨간색 반환
-		"}\n";
+	//std::string fragShader =
+	//	"#version 330 core\n"
+	//	"\n"
+	//	"layout(location = 0) out vec4 color;" //출력 color
+	//	"\n"
+	//	"void main()\n"
+	//	"{\n"
+	//	"	color = vec4(1.0, 0.0 ,0.0, 1.0);\n" //빨간색 반환
+	//	"}\n";
 
-	unsigned int shader = CreateShader(vertexShader, fragShader);
+	//unsigned int shader = CreateShader(vertexShader, fragShader);
+	ShaderProgramSource source = ParseShader("res/shaders/Basic.shader"); //셰이더 코드 파싱
+	unsigned int shader = CreateShader(source.VertexSource, source.FragSource);
 	glUseProgram(shader); //BindBuffer와 마찬가지로, 현재 셰이더 프로그램을 "작업 상태"로 놓음
 	//draw call은 작업 상태인 셰이더 프로그램을 사용하여 작업 상태인 버퍼 데이터를 그림
 
@@ -157,15 +206,14 @@ int main(void)
 				//glVertex2f( 0.0f,  0.5f);
 				//glVertex2f( 0.5f, -0.5f);
 				//glEnd();
-
+		//glUseProgram(0);		//	deactivate -> 다시 흰색으로 나옴
 				//----------Modern OpenGL----------//
 				// 주의해서 알아야 할 점 : 아래 draw call에서, 삼각형을 그리는 것은
 				// 66번째 line에서 glBindBuffer()가 되어 있기 때문임.
 				// 아래 glDrawArray에서는 무엇을 그릴 것인지 인자로 넘기는 것이 아니라,
 				// 현재 "작업 상태"에 들어와 있는 대상을 그리는 것
-		glDrawArrays(GL_TRIANGLES, //실제 draw call, 삼각형을 그릴 것이라고 명시
-			0,				//몇 번째 데이터부터 그리려는지 명시(모두 그린다면 0)
-			3);				//몇 개의 데이터를 그릴 것인지 명시
+		//glDrawArrays(GL_TRIANGLES, 0, 3);				//실제 draw call, 삼각형을 그릴 것이라고 명시
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);	//	draw call -> 사각형
 
 		//현재는 아무것도 화면에 나오지 않을 것임. 
 		//왜냐하면 삼각형을 어떻게 그릴 것인지 쉐이더를 통해 알려주지 않았기 때문!
