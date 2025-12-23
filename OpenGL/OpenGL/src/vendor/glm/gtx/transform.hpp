@@ -16,6 +16,7 @@
 #pragma once
 
 // Dependency:
+#define GLM_ENABLE_EXPERIMENTAL
 #include "../glm.hpp"
 #include "../gtc/matrix_transform.hpp"
 

@@ -114,6 +114,18 @@ void Shader::SetUniform1f(const std::string& name, float value)
 	GLCall(glUniform1f(GetUniformLocation(name), value));
 }
 
+// Implement SetUniform1i
+void Shader::SetUniform1i(const std::string& name, int value)
+{
+	GLCall(glUniform1i(GetUniformLocation(name), value));
+}
+
+// Implement SetUniformMat4f
+void Shader::SetUniformMat4f(const std::string& name, const glm::mat4& matrix)
+{
+	GLCall(glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, &matrix[0][0]));
+}
+
 int Shader::GetUniformLocation(const std::string& name)
 {
 	//반복해서 uniform을 찾지 않고 map에 저장해둠
