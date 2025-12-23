@@ -10,7 +10,6 @@
 #include "IndexBuffer.h"
 #include "VertexArray.h"
 #include "Shader.h"
-#include "Renderer.h"
 #include "VertexBufferLayout.h"
 
 int main(void)
